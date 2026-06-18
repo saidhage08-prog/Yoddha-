@@ -11,7 +11,7 @@
 - [Features Overview](#features-overview)
 - [Quick Setup](#quick-setup)
 - [Manual Installation Steps](#manual-installation-steps)
-- [Support Server](https://discord.gg/QnWNz2dKCE)
+- [Support Server](https://discord.gg/pVtGhhz7Se)
 - [Required Bot Intents](#bot-intents)
 - [Contributing](#contributing)
 
@@ -91,7 +91,7 @@ TitanBot offers a complete suite of tools for Discord server management and comm
 
 ### Video Tutorial
 For a detailed step-by-step setup guide, watch our comprehensive video tutorial:
-[**TitanBot Setup Tutorial**](https://www.youtube.com/@TouchDisc)
+[**TitanBot Setup Tutorial**]()
 
 ## Docker Deployment (Recommended)
 
