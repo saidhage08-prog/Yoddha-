@@ -50,6 +50,12 @@ export default {
         formatLogLine('Message ID', `\`${message.id}\``),
         formatLogLine('Message author', message.author ? message.author.toString() : 'Unknown'),
         formatLogLine('Message created', `<t:${Math.floor(message.createdTimestamp / 1000)}:R>`),
+        formatLogLine(
+          'Deleted by',
+          deletedBySelf
+            ? `${message.author.toString()} *(self-deleted)*`
+            : `${executor.toString()} \`(${executor.tag})\` 🔨 *moderator action*`
+        ),
       ];
 
       let messageBody = null;
