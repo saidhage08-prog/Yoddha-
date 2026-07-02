@@ -6,6 +6,7 @@ import { logTicketEvent } from '../utils/ticketLogging.js';
 import { logger } from '../utils/logger.js';
 import { InteractionHelper } from '../utils/interactionHelper.js';
 import { checkRateLimit } from '../utils/rateLimiter.js';
+import { replyUserError, ErrorTypes } from '../utils/errorHandler.js';
 import { getTicketPermissionContext } from '../utils/ticketPermissions.js';
 
 function escapeHtml(text) {
@@ -28,6 +29,17 @@ async function ensureGuildContext(interaction) {
   }
 
   return false;
+}
+
+async function replyPermissionCheckFailure(interaction, permissionCheck) {
+  let type = ErrorTypes.UNKNOWN;
+  if (permissionCheck.error === 'Permission Denied') {
+    type = ErrorTypes.PERMISSION;
+  } else if (permissionCheck.error === 'Request Timeout') {
+    type = ErrorTypes.RATE_LIMIT;
+  }
+
+  await replyUserError(interaction, { type, message: permissionCheck.details });
 }
 
 async function checkTicketPermissionWithTimeout(interaction, client, actionLabel, options = {}, timeoutMs = 2500) {
@@ -78,7 +90,7 @@ async function ensureTicketPermission(interaction, client, actionLabel, options 
       ? 'You must have **Manage Channels**, the configured **Ticket Staff Role**, or be the **ticket creator**.'
       : 'You must have **Manage Channels** or the configured **Ticket Staff Role**.';
 
-    await replyUserError(interaction, { type: ErrorTypes.PERMISSION, message: '${permissionMessage}\n\nYou cannot ${actionLabel}.' });
+    await replyUserError(interaction, { type: ErrorTypes.PERMISSION, message: `${permissionMessage}\n\nYou cannot ${actionLabel}.` });
     return null;
   }
 
@@ -105,7 +117,7 @@ const createTicketHandler = {
       const currentTicketCount = await getUserTicketCount(interaction.guildId, interaction.user.id);
       
       if (currentTicketCount >= maxTicketsPerUser) {
-        return await replyUserError(interaction, { type: ErrorTypes.UNKNOWN, message: 'You have reached the maximum number of open tickets (${maxTicketsPerUser}).\n\nPlease close your existing tickets before creating a new one.\n\n**Current Tickets:** ${currentTicketCount}/${maxTicketsPerUser}' });
+        return await replyUserError(interaction, { type: ErrorTypes.UNKNOWN, message: `You have reached the maximum number of open tickets (${maxTicketsPerUser}).\n\nPlease close your existing tickets before creating a new one.\n\n**Current Tickets:** ${currentTicketCount}/${maxTicketsPerUser}` });
       }
       
       const modal = new ModalBuilder()
@@ -161,7 +173,7 @@ const createTicketModalHandler = {
           )]
         });
       } else {
-        await replyUserError(interaction, { type: ErrorTypes.UNKNOWN, message: 'result.error || \'Failed to create ticket.\'' });
+        await replyUserError(interaction, { type: ErrorTypes.UNKNOWN, message: result.error || 'Failed to create ticket.' });
       }
     } catch (error) {
       logger.error('Error creating ticket:', error);
@@ -185,9 +197,7 @@ const closeTicketHandler = {
       );
 
       if (!permissionCheck.success) {
-        if (!interaction.replied && !interaction.deferred) {
-          await replyUserError(interaction, { type: ErrorTypes.PERMISSION, message: 'permissionCheck.details' });
-        }
+        await replyPermissionCheckFailure(interaction, permissionCheck);
         return;
       }
 
@@ -232,9 +242,7 @@ const closeTicketModalHandler = {
       );
 
       if (!permissionCheck.success) {
-        if (!interaction.replied && !interaction.deferred) {
-          await replyUserError(interaction, { type: ErrorTypes.PERMISSION, message: 'permissionCheck.details' });
-        }
+        await replyPermissionCheckFailure(interaction, permissionCheck);
         return;
       }
 
@@ -252,7 +260,7 @@ const closeTicketModalHandler = {
           flags: MessageFlags.Ephemeral
         });
       } else {
-        await replyUserError(interaction, { type: ErrorTypes.UNKNOWN, message: 'result.error || \'Failed to close ticket.\'' });
+        await replyUserError(interaction, { type: ErrorTypes.UNKNOWN, message: result.error || 'Failed to close ticket.' });
       }
     } catch (error) {
       logger.error('Error submitting close ticket modal:', error);
@@ -280,9 +288,7 @@ const claimTicketHandler = {
       );
 
       if (!permissionCheck.success) {
-        if (!interaction.replied && !interaction.deferred) {
-          await replyUserError(interaction, { type: ErrorTypes.PERMISSION, message: 'permissionCheck.details' });
-        }
+        await replyPermissionCheckFailure(interaction, permissionCheck);
         return;
       }
 
@@ -297,7 +303,7 @@ const claimTicketHandler = {
           flags: MessageFlags.Ephemeral
         });
       } else {
-        await replyUserError(interaction, { type: ErrorTypes.UNKNOWN, message: 'result.error || \'Failed to claim ticket.\'' });
+        await replyUserError(interaction, { type: ErrorTypes.UNKNOWN, message: result.error || 'Failed to claim ticket.' });
       }
     } catch (error) {
       logger.error('Error claiming ticket:', error);
@@ -325,9 +331,7 @@ const priorityTicketHandler = {
       );
 
       if (!permissionCheck.success) {
-        if (!interaction.replied && !interaction.deferred) {
-          await replyUserError(interaction, { type: ErrorTypes.PERMISSION, message: 'permissionCheck.details' });
-        }
+        await replyPermissionCheckFailure(interaction, permissionCheck);
         return;
       }
 
@@ -348,7 +352,7 @@ const priorityTicketHandler = {
           flags: MessageFlags.Ephemeral
         });
       } else {
-        await replyUserError(interaction, { type: ErrorTypes.UNKNOWN, message: 'result.error || \'Failed to update priority.\'' });
+        await replyUserError(interaction, { type: ErrorTypes.UNKNOWN, message: result.error || 'Failed to update priority.' });
       }
     } catch (error) {
       logger.error('Error updating ticket priority:', error);
@@ -376,9 +380,7 @@ const pinTicketHandler = {
       );
 
       if (!permissionCheck.success) {
-        if (!interaction.replied && !interaction.deferred) {
-          await replyUserError(interaction, { type: ErrorTypes.PERMISSION, message: 'permissionCheck.details' });
-        }
+        await replyPermissionCheckFailure(interaction, permissionCheck);
         return;
       }
 
@@ -485,9 +487,7 @@ const unclaimTicketHandler = {
       );
 
       if (!permissionCheck.success) {
-        if (!interaction.replied && !interaction.deferred) {
-          await replyUserError(interaction, { type: ErrorTypes.PERMISSION, message: 'permissionCheck.details' });
-        }
+        await replyPermissionCheckFailure(interaction, permissionCheck);
         return;
       }
 
@@ -503,7 +503,7 @@ const unclaimTicketHandler = {
           flags: MessageFlags.Ephemeral
         });
       } else {
-        await replyUserError(interaction, { type: ErrorTypes.UNKNOWN, message: 'result.error || \'Failed to unclaim ticket.\'' });
+        await replyUserError(interaction, { type: ErrorTypes.UNKNOWN, message: result.error || 'Failed to unclaim ticket.' });
       }
     } catch (error) {
       logger.error('Error unclaiming ticket:', error);
@@ -531,9 +531,7 @@ const reopenTicketHandler = {
       );
 
       if (!permissionCheck.success) {
-        if (!interaction.replied && !interaction.deferred) {
-          await replyUserError(interaction, { type: ErrorTypes.PERMISSION, message: 'permissionCheck.details' });
-        }
+        await replyPermissionCheckFailure(interaction, permissionCheck);
         return;
       }
 
@@ -554,7 +552,7 @@ const reopenTicketHandler = {
           flags: MessageFlags.Ephemeral
         });
       } else {
-        await replyUserError(interaction, { type: ErrorTypes.UNKNOWN, message: 'result.error || \'Failed to reopen ticket.\'' });
+        await replyUserError(interaction, { type: ErrorTypes.UNKNOWN, message: result.error || 'Failed to reopen ticket.' });
       }
     } catch (error) {
       logger.error('Error reopening ticket:', error);
@@ -582,9 +580,7 @@ const deleteTicketHandler = {
       );
 
       if (!permissionCheck.success) {
-        if (!interaction.replied && !interaction.deferred) {
-          await replyUserError(interaction, { type: ErrorTypes.PERMISSION, message: 'permissionCheck.details' });
-        }
+        await replyPermissionCheckFailure(interaction, permissionCheck);
         return;
       }
 
@@ -600,7 +596,7 @@ const deleteTicketHandler = {
           flags: MessageFlags.Ephemeral
         });
       } else {
-        await replyUserError(interaction, { type: ErrorTypes.UNKNOWN, message: 'result.error || \'Failed to delete ticket.\'' });
+        await replyUserError(interaction, { type: ErrorTypes.UNKNOWN, message: result.error || 'Failed to delete ticket.' });
       }
     } catch (error) {
       logger.error('Error deleting ticket:', error);

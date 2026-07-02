@@ -12,7 +12,10 @@ import { logger, startupLog, shutdownLog } from './utils/logger.js';
 import { checkBirthdays } from './services/birthdayService.js';
 import { checkGiveaways } from './services/giveawayService.js';
 import { loadCommands, registerCommands as registerSlashCommands } from './handlers/commandLoader.js';
+import { initializeMusic } from './services/music/riffySetup.js';
+import { shutdownMusic } from './services/music/playerHandler.js';
 import pkg from '../package.json' with { type: 'json' };
+import { EXPECTED_SCHEMA_VERSION, EXPECTED_SCHEMA_LABEL } from './config/schemaVersion.js';
 
 class TitanBot extends Client {
   constructor() {
@@ -79,6 +82,8 @@ class TitanBot extends Client {
       startupLog('Loading handlers...');
       await this.loadHandlers();
       startupLog('Handlers loaded');
+
+      initializeMusic(this);
       
       startupLog('Logging into Discord...');
       await this.login(this.config.bot.token);
@@ -171,19 +176,33 @@ class TitanBot extends Client {
     });
 
     app.get('/ready', (req, res) => {
-      const dbStatus = this.db?.getStatus?.() || { isDegraded: true };
+      const dbStatus = this.db?.getStatus?.() || { isDegraded: true, connectionType: 'none' };
       const isReady = this.isReady() && !dbStatus.isDegraded;
+
+      const metrics = {
+        guildCount: this.guilds?.cache?.size ?? 0,
+        commandCount: this.commands?.size ?? 0,
+        database: {
+          mode: dbStatus.connectionType,
+          degraded: dbStatus.isDegraded,
+          degradedReason: dbStatus.degradedReason ?? null,
+        },
+        schemaVersion: EXPECTED_SCHEMA_VERSION,
+        schemaLabel: EXPECTED_SCHEMA_LABEL,
+      };
 
       if (isReady) {
         return res.status(200).json({
           ready: true,
-          message: 'Bot is ready'
+          message: 'Bot is ready',
+          metrics,
         });
       }
 
       res.status(503).json({
         ready: false,
-        reason: !this.isReady() ? 'Bot not Ready' : 'Database degraded'
+        reason: !this.isReady() ? 'Bot not Ready' : 'Database degraded',
+        metrics,
       });
     });
 
@@ -328,6 +347,10 @@ class TitanBot extends Client {
       cron.getTasks().forEach(task => task.stop());
       logger.info('✅ Cron jobs stopped');
 
+      logger.info('Stopping music players...');
+      await shutdownMusic(this);
+      logger.info('✅ Music players stopped');
+
       // Close database connection
       // Close database connection
       if (this.db && this.db.db) {
@@ -379,6 +402,9 @@ try {
       const code = reason?.code;
       if (code === 10062 || code === 40060 || code === 50027) {
         logger.warn('Recoverable Discord interaction rejection:', reason?.message || reason);
+        return;
+      }
+      if (reason?.message?.includes('Queue is empty')) {
         return;
       }
 
