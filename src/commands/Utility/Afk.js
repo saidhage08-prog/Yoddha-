@@ -1,9 +1,9 @@
 import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
 import { getAFKKey } from '../../utils/database.js';
 import { logger } from '../../utils/logger.js';
+import { InteractionHelper } from '../../utils/interactionHelper.js';
 
-export default {
-    data: new SlashCommandBuilder()
+const data = new SlashCommandBuilder()
   .setName('afk')
   .setDescription('Set your AFK status with a reason')
   .addStringOption(option =>
@@ -22,23 +22,21 @@ export default {
       .setMaxValue(1440) // 24 hours max
   );
 
-export async function execute(interaction) {
+// Shared logic for setting AFK status
+async function setAFKStatusLogic(client, guildId, userId, reason, duration) {
   try {
-    await interaction.deferReply({ ephemeral: true });
+    if (!client.db) {
+      logger.warn('Database not available for setting AFK status');
+      return null;
+    }
 
-    const reason = interaction.options.getString('reason') || 'No reason provided';
-    const duration = interaction.options.getNumber('duration');
+    const afkKey = getAFKKey(guildId, userId);
     
-    const guildId = interaction.guildId;
-    const userId = interaction.user.id;
-    
-    // Calculate expiration time
     let expiresAt = null;
     if (duration) {
       expiresAt = new Date(Date.now() + duration * 60 * 1000).toISOString();
     }
 
-    // Prepare AFK data
     const afkData = {
       reason,
       status_at: new Date().toISOString(),
@@ -47,12 +45,24 @@ export async function execute(interaction) {
       guildId
     };
 
-    // Store AFK status in database
-    const afkKey = getAFKKey(guildId, userId);
-    await interaction.client.db.set(afkKey, afkData);
+    await client.db.set(afkKey, afkData);
+    logger.info(`Set AFK status for user ${userId} in guild ${guildId}`, {
+      reason,
+      duration,
+      expiresAt
+    });
 
-    // Create success embed
-    const embed = new EmbedBuilder()
+    return afkData;
+  } catch (error) {
+    logger.error(`Error setting AFK status for user ${userId}:`, error);
+    return null;
+  }
+}
+
+// Shared embed creation
+function createAFKEmbed(reason, duration, success = true) {
+  if (success) {
+    return new EmbedBuilder()
       .setColor('#4CAF50')
       .setTitle('✅ AFK Status Set')
       .setDescription(`You are now marked as AFK`)
@@ -65,28 +75,96 @@ export async function execute(interaction) {
         }
       )
       .setTimestamp();
-
-    await interaction.editReply({ embeds: [embed] });
-
-    logger.info(`User ${userId} set AFK status in guild ${guildId}`, {
-      reason,
-      duration,
-      expiresAt
-    });
-
-  } catch (error) {
-    logger.error('Error executing AFK command:', error);
-    
-    const errorEmbed = new EmbedBuilder()
+  } else {
+    return new EmbedBuilder()
       .setColor('#FF6B6B')
       .setTitle('❌ Error')
       .setDescription('Failed to set AFK status. Please try again later.')
       .setTimestamp();
+  }
+}
 
+// Slash Command Handler
+async function execute(interaction) {
+  try {
+    await InteractionHelper.safeDefer(interaction);
+
+    const reason = interaction.options.getString('reason') || 'No reason provided';
+    const duration = interaction.options.getNumber('duration');
+    
+    const guildId = interaction.guildId;
+    const userId = interaction.user.id;
+
+    const result = await setAFKStatusLogic(interaction.client, guildId, userId, reason, duration);
+    
+    const embed = createAFKEmbed(reason, duration, result !== null);
+    await InteractionHelper.safeEditReply(interaction, { embeds: [embed] });
+
+  } catch (error) {
+    logger.error('Error executing AFK slash command:', error);
+    
+    const errorEmbed = createAFKEmbed(null, null, false);
     if (interaction.deferred) {
-      await interaction.editReply({ embeds: [errorEmbed] });
+      await InteractionHelper.safeEditReply(interaction, { embeds: [errorEmbed] });
     } else {
-      await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
+      await InteractionHelper.safeReply(interaction, { embeds: [errorEmbed], ephemeral: true });
     }
   }
 }
+
+// Prefix Command Handler
+async function prefixExecute(message, args, client) {
+  try {
+    let reason = 'No reason provided';
+    let duration = null;
+
+    // Parse arguments: !afk [duration] [reason...]
+    // Example: !afk 30 In a meeting or !afk BRB or !afk
+    if (args.length > 0) {
+      const firstArg = args[0];
+      
+      // Check if first arg is a number (duration)
+      if (!isNaN(firstArg)) {
+        duration = parseInt(firstArg);
+        if (duration <= 0 || duration > 1440) {
+          await message.reply({
+            embeds: [
+              new EmbedBuilder()
+                .setColor('#FF6B6B')
+                .setTitle('❌ Invalid Duration')
+                .setDescription('Duration must be between 1 and 1440 minutes (24 hours).')
+                .setTimestamp()
+            ]
+          });
+          return;
+        }
+        // Rest of args are reason
+        reason = args.slice(1).join(' ') || 'No reason provided';
+      } else {
+        // All args are reason (no duration specified)
+        reason = args.join(' ');
+      }
+    }
+
+    // Limit reason length
+    if (reason.length > 100) {
+      reason = reason.substring(0, 100);
+    }
+
+    const guildId = message.guildId;
+    const userId = message.author.id;
+
+    const result = await setAFKStatusLogic(client, guildId, userId, reason, duration);
+    
+    const embed = createAFKEmbed(reason, duration, result !== null);
+    await message.reply({ embeds: [embed] });
+
+  } catch (error) {
+    logger.error('Error executing AFK prefix command:', error);
+    
+    const errorEmbed = createAFKEmbed(null, null, false);
+    await message.reply({ embeds: [errorEmbed] });
+  }
+}
+
+export default { data, execute, prefixExecute };
