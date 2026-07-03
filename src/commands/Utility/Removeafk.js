@@ -44,3 +44,39 @@ export async function execute(interaction) {
     }
   }
 }
+
+// Prefix Command Handler
+export async function prefixExecute(message, args, client) {
+  try {
+    const guildId = message.guildId;
+    const userId = message.author.id;
+
+    // Delete AFK status from database
+    const afkKey = getAFKKey(guildId, userId);
+    await client.db.delete(afkKey);
+
+    // Create success embed
+    const embed = new EmbedBuilder()
+      .setColor('#4CAF50')
+      .setTitle('✅ AFK Status Removed')
+      .setDescription('You are no longer marked as AFK')
+      .setTimestamp();
+
+    await message.reply({ embeds: [embed] });
+
+    logger.info(`User ${userId} removed AFK status in guild ${guildId}`);
+
+  } catch (error) {
+    logger.error('Error executing UnAFK prefix command:', error);
+    
+    const errorEmbed = new EmbedBuilder()
+      .setColor('#FF6B6B')
+      .setTitle('❌ Error')
+      .setDescription('Failed to remove AFK status. Please try again later.')
+      .setTimestamp();
+
+    await message.reply({ embeds: [errorEmbed] });
+  }
+}
+
+export default { data, execute, prefixExecute };
