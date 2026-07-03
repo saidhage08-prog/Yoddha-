@@ -2,7 +2,8 @@ import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
 import { getAFKKey } from '../../utils/database.js';
 import { logger } from '../../utils/logger.js';
 
-export const data = new SlashCommandBuilder()
+export default {
+    data: new SlashCommandBuilder()
   .setName('afk')
   .setDescription('Set your AFK status with a reason')
   .addStringOption(option =>
