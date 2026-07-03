@@ -7,6 +7,7 @@ import { parsePrefixCommand } from '../utils/prefixParser.js';
 import { supportsPrefixExecution, executePrefixCommand, resolvePrefixAccessKey } from '../utils/messageAdapter.js';
 import { resolveCommandAlias, resolveSubcommandAlias } from '../config/commandAliases.js';
 import { getPrefixRestriction } from '../config/prefixRestrictions.js';
+import { checkUserAFKStatus } from '../handlers/Afkmsg.js';
 import { getGuildConfig } from '../services/guildConfig.js';
 import { enforceAbuseProtection, formatCooldownDuration } from '../utils/abuseProtection.js';
 import { createEmbed } from '../utils/embeds.js';
@@ -42,6 +43,36 @@ export default {
     }
   }
 };
+
+async function handleAFKCheck(message, client) {
+  try {
+    await checkUserAFKStatus(client, message);
+  } catch (error) {
+    logger.debug('Error checking AFK status:', error);
+  }
+}
+
+// In the execute function, add this:
+async execute(message, client) {
+  try {
+    if (message.author.bot || !message.guild) return;
+
+    logger.debug(`Message received from ${message.author.tag}: ${message.content}`);
+
+    const countingProcessed = await handleCountingGame(message, client);
+    if (countingProcessed) {
+      return;
+    }
+
+    // ✅ NEW: Check if the user sending the message is AFK
+    await handleAFKCheck(message, client);
+
+    await handlePrefixCommand(message, client);
+    await handleLeveling(message, client);
+  } catch (error) {
+    logger.error('Error in messageCreate event:', error);
+  }
+}
 
 async function handlePrefixCommand(message, client) {
   try {
