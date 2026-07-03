@@ -1,8 +1,18 @@
-// In your message event handler
-import { getAFKMessage } from '../../utils/afkUtils.js';
+import { getFormattedAFKMessage } from '../services/afkService.js';
 
-// After checking if message is valid
-const afkMessage = await getAFKMessage(client, message.guildId, message.author.id);
-if (afkMessage) {
-  await message.reply(afkMessage);
+// In your message event handler
+export async function checkUserAFKStatus(client, message) {
+  if (!message.guild) return null;
+  
+  const afkMessage = await getFormattedAFKMessage(
+    client,
+    message.guildId,
+    message.author.id
+  );
+  
+  if (afkMessage) {
+    await message.reply(afkMessage).catch(() => {});
+  }
+  
+  return afkMessage;
 }
